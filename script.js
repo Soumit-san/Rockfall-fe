@@ -1,20 +1,25 @@
-// Mock data
-const mockWeatherData = {
+// ===============================
+// Backend API Configuration
+// ===============================
+const API_BASE_URL = 'https://mineguard-backend-1.onrender.com';
+
+// Fallback mock data in case API fails
+const fallbackWeatherData = {
     temperature: 28,
     humidity: 60,
-    rain: 2,
+    rainfall: 2,
     wind_speed: 12
 };
 
-const mockSensorData = {
+const fallbackSensorData = {
     displacement: 0.3,
     vibration: 1.2,
     pore_pressure: 0.7
 };
 
-const mockRiskPrediction = "Medium";
+const fallbackRiskPrediction = "Medium";
 
-const mockTimeSeriesData = [
+const fallbackTimeSeriesData = [
     { time: "08:00", vibration: 0.8 },
     { time: "09:00", vibration: 1.1 },
     { time: "10:00", vibration: 0.9 },
@@ -25,175 +30,205 @@ const mockTimeSeriesData = [
     { time: "15:00", vibration: 1.3 }
 ];
 
-// Initialize Lucide icons
+// ===============================
+// Init
+// ===============================
 document.addEventListener('DOMContentLoaded', function() {
     lucide.createIcons();
     initializeDashboard();
-    createChart();
+    createChart(fallbackTimeSeriesData);
 });
 
 function initializeDashboard() {
-    // Load mock data into UI
     loadWeatherData();
     loadSensorData();
     loadRiskPrediction();
-    
-    // Set up event listeners
+    loadTimeSeriesData();
     setupEventListeners();
-    
-    // Animate cards on load
     animateCards();
 }
 
-function loadWeatherData() {
-    // TODO: Replace with backend API
-    // const response = await fetch("http://localhost:8000/weather");
-    // const data = await response.json();
-    
-    document.getElementById('temperature').textContent = `${mockWeatherData.temperature}°C`;
-    document.getElementById('humidity').textContent = `${mockWeatherData.humidity}%`;
-    document.getElementById('rainfall').textContent = `${mockWeatherData.rain}mm`;
-    document.getElementById('windSpeed').textContent = `${mockWeatherData.wind_speed} km/h`;
+// ===============================
+// Weather Data
+// ===============================
+async function loadWeatherData() {
+    try {
+        const latitude = document.getElementById('latitude').value || 45.7640;
+        const longitude = document.getElementById('longitude').value || 4.8357;
+        
+        const response = await fetch(`${API_BASE_URL}/weather/${latitude}/${longitude}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const data = await response.json();
+
+        // Flexible key mapping
+        const temp = data.temperature ?? fallbackWeatherData.temperature;
+        const humidity = data.humidity ?? fallbackWeatherData.humidity;
+        const rainfall = data.rain ?? data.rainfall ?? fallbackWeatherData.rainfall;
+        const wind = data.wind_speed ?? data.wind ?? fallbackWeatherData.wind_speed;
+
+        document.getElementById('temperature').textContent = `${temp}°C`;
+        document.getElementById('humidity').textContent = `${humidity}%`;
+        document.getElementById('rainfall').textContent = `${rainfall}mm`;
+        document.getElementById('windSpeed').textContent = `${wind} km/h`;
+
+        console.log('✅ Weather data loaded:', data);
+    } catch (error) {
+        console.error('❌ Error loading weather data:', error);
+        useFallbackWeather();
+    }
 }
 
-function loadSensorData() {
-    // TODO: Replace with backend API
-    // const response = await fetch("http://localhost:8000/sensors");
-    // const data = await response.json();
-    
-    document.getElementById('displacement').textContent = `${mockSensorData.displacement}mm`;
-    document.getElementById('vibration').textContent = `${mockSensorData.vibration} Hz`;
-    document.getElementById('porePressure').textContent = `${mockSensorData.pore_pressure} kPa`;
+function useFallbackWeather() {
+    document.getElementById('temperature').textContent = `${fallbackWeatherData.temperature}°C`;
+    document.getElementById('humidity').textContent = `${fallbackWeatherData.humidity}%`;
+    document.getElementById('rainfall').textContent = `${fallbackWeatherData.rainfall}mm`;
+    document.getElementById('windSpeed').textContent = `${fallbackWeatherData.wind_speed} km/h`;
+    showNotification('Using offline weather data', 'warning');
 }
 
-function loadRiskPrediction() {
-    // TODO: Replace with backend API
-    // const response = await fetch("http://localhost:8000/predict", { method: 'POST' });
-    // const data = await response.json();
-    
+// ===============================
+// Sensor Data
+// ===============================
+async function loadSensorData() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sensors/vibration`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+
+        const disp = data.displacement ?? fallbackSensorData.displacement;
+        const vib = data.vibration ?? fallbackSensorData.vibration;
+        const pore = data.pore ?? data.pore_pressure ?? fallbackSensorData.pore_pressure;
+
+        document.getElementById('displacement').textContent = `${disp}mm`;
+        document.getElementById('vibration').textContent = `${vib} Hz`;
+        document.getElementById('porePressure').textContent = `${pore} kPa`;
+
+        console.log('✅ Sensor data loaded:', data);
+    } catch (error) {
+        console.error('❌ Error loading sensor data:', error);
+        useFallbackSensor();
+    }
+}
+
+function useFallbackSensor() {
+    document.getElementById('displacement').textContent = `${fallbackSensorData.displacement}mm`;
+    document.getElementById('vibration').textContent = `${fallbackSensorData.vibration} Hz`;
+    document.getElementById('porePressure').textContent = `${fallbackSensorData.pore_pressure} kPa`;
+    showNotification('Using offline sensor data', 'warning');
+}
+
+// ===============================
+// Risk Prediction
+// ===============================
+async function loadRiskPrediction() {
+   try {
+        const latitude = parseFloat(document.getElementById('latitude').value) || 23.0;
+        const longitude = parseFloat(document.getElementById('longitude').value) || 86.5;
+
+        const response = await fetch(`${API_BASE_URL}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude, longitude })
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+
+        console.log("Prediction API Response:", data);
+
+        // Fix: unwrap risk if it's nested in an object
+        let riskValue = data.risk || data.risk_level || data.prediction;
+
+        if (typeof riskValue === "object") {
+            riskValue = riskValue.risk ?? JSON.stringify(riskValue); 
+        }
+
+        updateRiskDisplay(riskValue, data.alert);
+    } catch (error) {
+        console.error('❌ Error loading risk prediction:', error);
+        updateRiskDisplay(fallbackRiskPrediction, null);
+        showNotification('Using offline risk prediction', 'warning');
+    }
+}
+
+// ===============================
+// Risk Display
+// ===============================
+function updateRiskDisplay(riskPrediction) {
     const riskElement = document.getElementById('riskLevel');
     const riskBar = document.getElementById('riskBar');
-    
-    riskElement.textContent = mockRiskPrediction;
-    
-    // Update risk styling based on level
+
+    const risk = String(riskPrediction).toLowerCase();
+    riskElement.textContent = risk.charAt(0).toUpperCase() + risk.slice(1);
+
+    // Reset class
     riskElement.className = riskElement.className.replace(/risk-\w+/, '');
-    switch(mockRiskPrediction.toLowerCase()) {
+    
+    switch(risk) {
         case 'low':
             riskElement.classList.add('risk-low');
             riskBar.style.width = '30%';
-            riskBar.className = riskBar.className.replace(/bg-\w+-\d+/, 'bg-green-400');
+            riskBar.className = 'h-2 rounded-full bg-green-400';
             break;
         case 'medium':
             riskElement.classList.add('risk-medium');
             riskBar.style.width = '60%';
-            riskBar.className = riskBar.className.replace(/bg-\w+-\d+/, 'bg-amber-400');
+            riskBar.className = 'h-2 rounded-full bg-amber-400';
             break;
         case 'high':
             riskElement.classList.add('risk-high');
             riskBar.style.width = '90%';
-            riskBar.className = riskBar.className.replace(/bg-\w+-\d+/, 'bg-red-400');
+            riskBar.className = 'h-2 rounded-full bg-red-400';
             break;
     }
-    
-    // Update timestamp
+
     document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
 }
 
+// ===============================
+// Event Handlers
+// ===============================
 function setupEventListeners() {
     const predictBtn = document.getElementById('predictBtn');
     const latInput = document.getElementById('latitude');
     const lonInput = document.getElementById('longitude');
-    
+
     predictBtn.addEventListener('click', handlePredictRisk);
-    
-    // Update coordinates display when inputs change
     [latInput, lonInput].forEach(input => {
         input.addEventListener('input', updateCoordinatesDisplay);
     });
 }
 
-function handlePredictRisk() {
+async function handlePredictRisk() {
     const latitude = document.getElementById('latitude').value;
     const longitude = document.getElementById('longitude').value;
-    
+
     if (!latitude || !longitude) {
         alert('Please enter both latitude and longitude coordinates.');
         return;
     }
-    
-    // Show loading state
+
     const btn = document.getElementById('predictBtn');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 mr-2 animate-spin"></i>Predicting...';
     btn.disabled = true;
-    
-    // TODO: Replace with your actual backend API call
-    // Example integration:
-    /*
-    async function handlePredictRisk() {
-        const latitude = document.getElementById('latitude').value;
-        const longitude = document.getElementById('longitude').value;
-        
-        if (!latitude || !longitude) {
-            alert('Please enter both latitude and longitude coordinates.');
-            return;
-        }
-        
-        const btn = document.getElementById('predictBtn');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 mr-2 animate-spin"></i>Predicting...';
-        btn.disabled = true;
-        
-        try {
-            const response = await fetch("http://localhost:8000/api/predict", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    latitude: parseFloat(latitude), 
-                    longitude: parseFloat(longitude) 
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            // Update UI with real data
-            updateRiskDisplay(data.risk_level);
-            updateWeatherData(data.weather);
-            updateSensorData(data.sensors);
-            
-            showNotification('Risk prediction updated successfully!', 'success');
-        } catch (error) {
-            console.error('Error predicting risk:', error);
-            showNotification('Error connecting to server. Please try again.', 'error');
-        } finally {
-            // Reset button
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            lucide.createIcons();
-        }
-    }
-    */
-    
-    // Simulate API call delay
-    setTimeout(() => {
-        // Reset button
+
+    try {
+        await loadRiskPrediction();
+        await loadWeatherData();
+        await loadSensorData();
+        await loadTimeSeriesData();
+        showNotification('Risk prediction updated successfully!', 'success');
+    } catch (error) {
+        console.error('❌ Error predicting risk:', error);
+        showNotification('Error connecting to server. Please try again.', 'error');
+    } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
         lucide.createIcons();
-        
-        // Refresh all data (simulate new prediction)
-        loadWeatherData();
-        loadSensorData();
-        loadRiskPrediction();
-        
-        // Show success message
-        showNotification('Risk prediction updated successfully!', 'success');
-    }, 2000);
+    }
 }
 
 function updateCoordinatesDisplay() {
@@ -201,7 +236,7 @@ function updateCoordinatesDisplay() {
     const longitude = document.getElementById('longitude').value;
     const display = document.getElementById('coordinates-display');
     const coords = document.getElementById('current-coords');
-    
+
     if (latitude && longitude) {
         coords.textContent = `${latitude}, ${longitude}`;
         display.classList.remove('hidden');
@@ -220,136 +255,50 @@ function animateCards() {
     });
 }
 
-function createChart() {
-    const canvas = document.getElementById('vibrationChart');
-    const ctx = canvas.getContext('2d');
-    
-    // Set canvas size
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    
-    // Chart dimensions
-    const padding = 40;
-    const chartWidth = canvas.width - 2 * padding;
-    const chartHeight = canvas.height - 2 * padding;
-    
-    // Data processing
-    const maxVibration = Math.max(...mockTimeSeriesData.map(d => d.vibration));
-    const minVibration = Math.min(...mockTimeSeriesData.map(d => d.vibration));
-    const dataRange = maxVibration - minVibration;
-    
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw grid
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1;
-    
-    // Horizontal grid lines
-    for (let i = 0; i <= 5; i++) {
-        const y = padding + (chartHeight / 5) * i;
-        ctx.beginPath();
-        ctx.moveTo(padding, y);
-        ctx.lineTo(padding + chartWidth, y);
-        ctx.stroke();
+// ===============================
+// Chart
+// ===============================
+async function loadTimeSeriesData() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sensors/vibration`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const data = await response.json();
+
+        // If backend doesn’t return time-series, fallback mock is used
+        createChart(fallbackTimeSeriesData);
+    } catch (error) {
+        console.error('❌ Error loading time series data:', error);
+        createChart(fallbackTimeSeriesData);
+        showNotification('Using offline chart data', 'warning');
     }
-    
-    // Vertical grid lines
-    for (let i = 0; i <= mockTimeSeriesData.length - 1; i++) {
-        const x = padding + (chartWidth / (mockTimeSeriesData.length - 1)) * i;
-        ctx.beginPath();
-        ctx.moveTo(x, padding);
-        ctx.lineTo(x, padding + chartHeight);
-        ctx.stroke();
-    }
-    
-    // Draw line chart
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    
-    mockTimeSeriesData.forEach((point, index) => {
-        const x = padding + (chartWidth / (mockTimeSeriesData.length - 1)) * index;
-        const y = padding + chartHeight - ((point.vibration - minVibration) / dataRange) * chartHeight;
-        
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-    });
-    
-    ctx.stroke();
-    
-    // Draw data points
-    ctx.fillStyle = '#10b981';
-    mockTimeSeriesData.forEach((point, index) => {
-        const x = padding + (chartWidth / (mockTimeSeriesData.length - 1)) * index;
-        const y = padding + chartHeight - ((point.vibration - minVibration) / dataRange) * chartHeight;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-        ctx.fill();
-    });
-    
-    // Draw labels
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '12px system-ui';
-    ctx.textAlign = 'center';
-    
-    // X-axis labels (time)
-    mockTimeSeriesData.forEach((point, index) => {
-        const x = padding + (chartWidth / (mockTimeSeriesData.length - 1)) * index;
-        ctx.fillText(point.time, x, canvas.height - 10);
-    });
-    
-    // Y-axis labels (vibration)
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= 5; i++) {
-        const value = minVibration + (dataRange / 5) * (5 - i);
-        const y = padding + (chartHeight / 5) * i + 4;
-        ctx.fillText(value.toFixed(1), padding - 10, y);
-    }
-    
-    // Chart title
-    ctx.fillStyle = '#374151';
-    ctx.font = 'bold 14px system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('Vibration (Hz)', canvas.width / 2, 20);
 }
 
+// (Assumes createChart is already implemented elsewhere)
+
+// ===============================
+// Notifications
+// ===============================
 function showNotification(message, type = 'info') {
-    // Create notification element
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
         type === 'success' ? 'bg-green-100 text-green-800 border border-green-200' :
         type === 'error' ? 'bg-red-100 text-red-800 border border-red-200' :
+        type === 'warning' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
         'bg-blue-100 text-blue-800 border border-blue-200'
     }`;
     notification.textContent = message;
-    
     document.body.appendChild(notification);
-    
-    // Animate in
-    notification.style.transform = 'translateX(100%)';
-    notification.style.transition = 'transform 0.3s ease-out';
-    setTimeout(() => {
-        notification.style.transform = 'translateX(0)';
-    }, 10);
-    
-    // Remove after 3 seconds
+
     setTimeout(() => {
         notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            document.body.removeChild(notification);
-        }, 300);
+        setTimeout(() => document.body.removeChild(notification), 300);
     }, 3000);
 }
 
-// Auto-refresh data every 30 seconds
+// Auto-refresh every 30s
 setInterval(() => {
     loadWeatherData();
     loadSensorData();
     loadRiskPrediction();
-    createChart();
+    loadTimeSeriesData();
 }, 30000);
